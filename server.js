@@ -132,3 +132,15 @@ app.put('/loans/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to update loan' })
   }
 })
+
+app.delete('/loans/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    await pool.query('DELETE FROM loans WHERE id = $1', [id])
+    console.log('Loan deleted:', id)
+    res.json({ success: true })
+  } catch (err) {
+    console.error('DELETE /loans error:', err)
+    res.status(500).json({ error: 'Failed to delete loan' })
+  }
+})
