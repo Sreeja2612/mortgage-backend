@@ -114,3 +114,21 @@ Rules:
 app.listen(5001, () => {
   console.log('Server running on port 5001')
 })
+
+
+
+app.put('/loans/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    const result = await pool.query(
+      'UPDATE loans SET status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    )
+    console.log('Loan updated:', result.rows[0])
+    res.json(result.rows[0])
+  } catch (err) {
+    console.error('PUT /loans error:', err)
+    res.status(500).json({ error: 'Failed to update loan' })
+  }
+})
