@@ -1,6 +1,7 @@
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config()
 }
+
 const express = require('express')
 const cors = require('cors')
 const { Pool } = require('pg')
@@ -9,9 +10,13 @@ const multer = require('multer')
 const fs = require('fs')
 
 const app = express()
+
 app.use(cors({
-  origin: '*'
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }))
+
 app.use(express.json())
 
 const pool = new Pool({
@@ -21,8 +26,11 @@ const pool = new Pool({
 
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
-const upload = multer({ dest: 'uploads/' })
-if (!fs.existsSync('uploads')) fs.mkdirSync('uploads')
+const upload = multer({ dest: '/tmp/uploads/' })
+
+if (!fs.existsSync('/tmp/uploads')) {
+  fs.mkdirSync('/tmp/uploads', { recursive: true })
+}
 
 app.get('/', (req, res) => {
   res.send('LoanFlow backend running')
@@ -60,6 +68,34 @@ app.post('/loans', async (req, res) => {
   }
 })
 
+app.put('/loans/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    const { status } = req.body
+    const result = await pool.query(
+      'UPDATE loans SET status = $1 WHERE id = $2 RETURNING *',
+      [status, id]
+    )
+    console.log('Loan updated:', result.rows[0])
+    res.json(result.rows[0])
+  } catch (err) {
+    console.error('PUT /loans error:', err)
+    res.status(500).json({ error: 'Failed to update loan' })
+  }
+})
+
+app.delete('/loans/:id', async (req, res) => {
+  try {
+    const { id } = req.params
+    await pool.query('DELETE FROM loans WHERE id = $1', [id])
+    console.log('Loan deleted:', id)
+    res.json({ success: true })
+  } catch (err) {
+    console.error('DELETE /loans error:', err)
+    res.status(500).json({ error: 'Failed to delete loan' })
+  }
+})
+
 app.post('/extract-document', upload.single('document'), async (req, res) => {
   try {
     if (!req.file) {
@@ -72,6 +108,7 @@ app.post('/extract-document', upload.single('document'), async (req, res) => {
     const mimeType = req.file.mimetype
 
     console.log('Extracting:', req.file.originalname, mimeType)
+    console.log('GEMINI_API_KEY exists:', !!process.env.GEMINI_API_KEY)
 
     const model = genai.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
@@ -107,44 +144,15 @@ Rules:
     res.json(extracted)
 
   } catch (err) {
-    console.error('Extract error:', err)
+    console.error('Extract error:', err.message)
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path)
     }
-    res.status(500).json({ error: 'Failed to extract document' })
+    res.status(500).json({ error: err.message })
   }
 })
 
-app.listen(5001, () => {
-  console.log('Server running on port 5001')
-})
-
-
-
-app.put('/loans/:id', async (req, res) => {
-  try {
-    const { id } = req.params
-    const { status } = req.body
-    const result = await pool.query(
-      'UPDATE loans SET status = $1 WHERE id = $2 RETURNING *',
-      [status, id]
-    )
-    console.log('Loan updated:', result.rows[0])
-    res.json(result.rows[0])
-  } catch (err) {
-    console.error('PUT /loans error:', err)
-    res.status(500).json({ error: 'Failed to update loan' })
-  }
-})
-
-app.delete('/loans/:id', async (req, res) => {
-  try {
-    const { id } = req.params
-    await pool.query('DELETE FROM loans WHERE id = $1', [id])
-    console.log('Loan deleted:', id)
-    res.json({ success: true })
-  } catch (err) {
-    console.error('DELETE /loans error:', err)
-    res.status(500).json({ error: 'Failed to delete loan' })
-  }
+const PORT = process.env.PORT || 5001
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`)
 })
